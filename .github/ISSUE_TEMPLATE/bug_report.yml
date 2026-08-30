@@ -52,7 +52,7 @@ body:
       description: Which API format were you using?
       options:
         - OpenAI Compatible
-        - Ollama Compatible  
+        - Ollama Compatible
         - Claude/Anthropic
         - vLLM Compatible
         - HuggingFace TGI

@@ -3,7 +3,7 @@
 # Script to generate PNG images from PlantUML and Mermaid diagram sources
 # Generated images are placed in the images/ folder
 
-cd "$(dirname "$0")"
+cd "$(dirname "$0")" || exit
 
 echo "Generating PNG images from diagram sources..."
 

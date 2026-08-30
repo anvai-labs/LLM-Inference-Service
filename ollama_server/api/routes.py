@@ -13,173 +13,178 @@
 # limitations under the License.
 
 """Flask routes for the Ollama-compatible server."""
+
 import logging
 from datetime import datetime
-from typing import Dict, Any
+from typing import Any, Dict
 
-from flask import Blueprint, request, jsonify, render_template
+from flask import Blueprint, jsonify, render_template, request
 
 from ..adapters import (
-    OpenAIAdapter, OllamaChatAdapter, OllamaGenerateAdapter,
-    VLLMAdapter, HuggingFaceAdapter
+    HuggingFaceAdapter,
+    OllamaChatAdapter,
+    OllamaGenerateAdapter,
+    OpenAIAdapter,
+    VLLMAdapter,
 )
-from .handlers import RequestHandler
-from ..utils.model_inspector import model_inspector
-from ..utils.gpu_monitor import gpu_monitor
-from ..utils.weight_distribution import weight_manager
 from ..utils.api_metrics import api_metrics
+from ..utils.gpu_monitor import gpu_monitor
 from ..utils.hardware_optimizer import hardware_optimizer
+from ..utils.model_inspector import model_inspector
+from ..utils.weight_distribution import weight_manager
+from .handlers import RequestHandler
 
 logger = logging.getLogger(__name__)
 
 # Create blueprint for all routes
-api_bp = Blueprint('api', __name__)
+api_bp = Blueprint("api", __name__)
 
 
 def create_routes(model_manager, request_tracker, llama_executor, config):
     """Create and configure all API routes."""
     handler = RequestHandler(llama_executor, request_tracker)
-    
+
     def _parse_parameter_count(param_size: str) -> int:
         """Parse parameter size string to integer count."""
         try:
-            if 'B' in param_size.upper():
-                return int(float(param_size.upper().replace('B', '')) * 1_000_000_000)
-            elif 'M' in param_size.upper():
-                return int(float(param_size.upper().replace('M', '')) * 1_000_000)
+            if "B" in param_size.upper():
+                return int(float(param_size.upper().replace("B", "")) * 1_000_000_000)
+            elif "M" in param_size.upper():
+                return int(float(param_size.upper().replace("M", "")) * 1_000_000)
             return 8030261312  # Default for 8B models
         except:
             return 8030261312
-    
+
     # ============================================================================
     # Chat Completion Endpoints
     # ============================================================================
-    
-    @api_bp.route('/api/chat/completions', methods=['POST'])  # OpenAI
+
+    @api_bp.route("/api/chat/completions", methods=["POST"])  # OpenAI
     def chat_completions():
         """OpenAI chat completions endpoint."""
         try:
             adapter = OpenAIAdapter(model_manager, config.default_tensor_split)
             request_obj = adapter.parse_request(request.json)
-            
+
             if request_obj.stream:
                 return handler.create_streaming_response(adapter, request_obj)
             else:
                 return handler.handle_non_streaming_request(adapter, request_obj)
         except Exception as e:
             logger.exception("Error in chat completions")
-            return jsonify({'error': str(e)}), 400
+            return jsonify({"error": str(e)}), 400
 
-    @api_bp.route('/api/chat', methods=['POST'])  # Ollama Chat
+    @api_bp.route("/api/chat", methods=["POST"])  # Ollama Chat
     def ollama_chat():
         """Ollama chat endpoint."""
         try:
             adapter = OllamaChatAdapter(model_manager, config.default_tensor_split)
             request_obj = adapter.parse_request(request.json)
-            
+
             if request_obj.stream:
                 return handler.create_streaming_response(adapter, request_obj)
             else:
                 return handler.handle_non_streaming_request(adapter, request_obj)
         except Exception as e:
             logger.exception("Error in Ollama chat")
-            return jsonify({'error': str(e)}), 400
+            return jsonify({"error": str(e)}), 400
 
-    @api_bp.route('/api/generate', methods=['POST'])  # Ollama Generate
+    @api_bp.route("/api/generate", methods=["POST"])  # Ollama Generate
     def ollama_generate():
         """Ollama generate endpoint."""
         try:
-            adapter = OllamaGenerateAdapter(model_manager, request_tracker, config.default_tensor_split)
+            adapter = OllamaGenerateAdapter(
+                model_manager, request_tracker, config.default_tensor_split
+            )
             request_obj = adapter.parse_request(request.json)
-            
+
             if request_obj.stream:
                 return handler.create_streaming_response(adapter, request_obj)
             else:
                 return handler.handle_non_streaming_request(adapter, request_obj)
         except Exception as e:
             logger.exception("Error in Ollama generate")
-            return jsonify({'error': str(e)}), 400
+            return jsonify({"error": str(e)}), 400
 
-
-    @api_bp.route('/v1/chat/completions', methods=['POST'])  # vLLM Chat
+    @api_bp.route("/v1/chat/completions", methods=["POST"])  # vLLM Chat
     def vllm_chat_completions():
         """vLLM chat completions endpoint."""
         try:
             adapter = VLLMAdapter(model_manager, config.default_tensor_split)
             request_obj = adapter.parse_request(request.json)
-            
+
             if request_obj.stream:
                 return handler.create_streaming_response(adapter, request_obj)
             else:
                 return handler.handle_non_streaming_request(adapter, request_obj)
         except Exception as e:
             logger.exception("Error in vLLM chat")
-            return jsonify({'error': str(e)}), 400
+            return jsonify({"error": str(e)}), 400
 
-    @api_bp.route('/v1/completions', methods=['POST'])  # vLLM Text Completion
+    @api_bp.route("/v1/completions", methods=["POST"])  # vLLM Text Completion
     def vllm_completions():
         """vLLM text completions endpoint."""
         try:
             adapter = VLLMAdapter(model_manager, config.default_tensor_split)
             request_obj = adapter.parse_request(request.json)
-            
+
             if request_obj.stream:
                 return handler.create_streaming_response(adapter, request_obj)
             else:
                 return handler.handle_non_streaming_request(adapter, request_obj)
         except Exception as e:
             logger.exception("Error in vLLM completions")
-            return jsonify({'error': str(e)}), 400
+            return jsonify({"error": str(e)}), 400
 
     # ============================================================================
     # HuggingFace TGI Endpoints
     # ============================================================================
-    
-    @api_bp.route('/generate', methods=['POST'])  # HF TGI (common path)
-    @api_bp.route('/hf/v1/completions', methods=['POST'])  # More specific path
+
+    @api_bp.route("/generate", methods=["POST"])  # HF TGI (common path)
+    @api_bp.route("/hf/v1/completions", methods=["POST"])  # More specific path
     def huggingface_generate():
         """HuggingFace TGI generate endpoint."""
         try:
             adapter = HuggingFaceAdapter(model_manager, config.default_tensor_split)
             request_obj = adapter.parse_request(request.json)
-            
+
             if request_obj.stream:
                 return handler.create_streaming_response(adapter, request_obj)
             else:
                 return handler.handle_non_streaming_request(adapter, request_obj)
         except Exception as e:
             logger.exception("Error in HuggingFace generate")
-            return jsonify({'error': str(e)}), 400
+            return jsonify({"error": str(e)}), 400
 
     # ============================================================================
     # Model Management Endpoints
     # ============================================================================
-    
-    @api_bp.route('/v1/models', methods=['GET'])  # OpenAI/vLLM compatible
+
+    @api_bp.route("/v1/models", methods=["GET"])  # OpenAI/vLLM compatible
     def openai_models():
         """OpenAI models list endpoint."""
-        return jsonify(handler.handle_models_list(model_manager, 'openai'))
+        return jsonify(handler.handle_models_list(model_manager, "openai"))
 
-    @api_bp.route('/api/tags', methods=['GET'])   # Ollama compatible (legacy)
-    @api_bp.route('/api/models', methods=['GET']) # Ollama compatible
+    @api_bp.route("/api/tags", methods=["GET"])  # Ollama compatible (legacy)
+    @api_bp.route("/api/models", methods=["GET"])  # Ollama compatible
     def ollama_models():
         """Ollama models list endpoint."""
-        return jsonify(handler.handle_models_list(model_manager, 'ollama'))
+        return jsonify(handler.handle_models_list(model_manager, "ollama"))
 
-    @api_bp.route('/api/show', methods=['POST'])  # Ollama show model capabilities
+    @api_bp.route("/api/show", methods=["POST"])  # Ollama show model capabilities
     def ollama_show():
         """Ollama show model capabilities endpoint."""
         try:
             data = request.json or {}
-            model_name = data.get('name', data.get('model', ''))
-            
+            model_name = data.get("name", data.get("model", ""))
+
             if not model_name:
-                return jsonify({'error': 'model name is required'}), 400
-            
+                return jsonify({"error": "model name is required"}), 400
+
             # Find the model
             model_mapping = model_manager.build_model_mapping()
             model_info = None
-            
+
             # Try exact match first
             if model_name in model_mapping:
                 model_info = model_manager.get_model_info(model_name)
@@ -189,584 +194,659 @@ def create_routes(model_manager, request_tracker, llama_executor, config):
                     if model_name.lower() in model_id.lower():
                         model_info = model_manager.get_model_info(model_id)
                         break
-            
+
             if not model_info:
-                return jsonify({'error': f'model "{model_name}" not found'}), 404
-            
+                return jsonify({"error": f'model "{model_name}" not found'}), 404
+
             # Get enhanced model info using inspector
             enhanced_info = model_inspector.get_enhanced_model_info(model_name, model_info)
-            
+
             # Build stop tokens parameters section
             parameters_section = f"parameter_size {enhanced_info['parameter_size']}\nquantization_level {enhanced_info['quantization']}"
-            if enhanced_info.get('stop_tokens'):
-                for stop_token in enhanced_info['stop_tokens']:
+            if enhanced_info.get("stop_tokens"):
+                for stop_token in enhanced_info["stop_tokens"]:
                     parameters_section += f'\nstop "{stop_token}"'
-            
+
             # Build model_info section with accurate context length
-            architecture = enhanced_info['architecture']
-            context_length = enhanced_info['context_size']
-            
+            architecture = enhanced_info["architecture"]
+            context_length = enhanced_info["context_size"]
+
             # Generate model_info that matches real Ollama format
             model_info_dict = {
-                'general.architecture': architecture,
-                'general.file_type': 15 if enhanced_info['quantization'] == 'Q4_K_M' else 1,
-                'general.parameter_count': _parse_parameter_count(enhanced_info['parameter_size']),
-                'general.quantization_version': 2,
-                'general.size_label': enhanced_info['parameter_size'],
-                'general.type': 'model'
+                "general.architecture": architecture,
+                "general.file_type": 15 if enhanced_info["quantization"] == "Q4_K_M" else 1,
+                "general.parameter_count": _parse_parameter_count(enhanced_info["parameter_size"]),
+                "general.quantization_version": 2,
+                "general.size_label": enhanced_info["parameter_size"],
+                "general.type": "model",
             }
-            
+
             # Add architecture-specific fields that include context length
-            if architecture == 'llama':
-                model_info_dict.update({
-                    'llama.context_length': context_length,
-                    'llama.embedding_length': enhanced_info.get('embedding_length', 4096),
-                    'llama.block_count': 32 if '8b' in model_name.lower() else 80,
-                    'llama.attention.head_count': 32 if '8b' in model_name.lower() else 64,
-                    'llama.attention.head_count_kv': 8 if '8b' in model_name.lower() else 8,
-                    'llama.attention.layer_norm_rms_epsilon': 1e-05,
-                    'llama.feed_forward_length': 14336 if '8b' in model_name.lower() else 28672,
-                    'llama.rope.dimension_count': 128,
-                    'llama.rope.freq_base': 500000
-                })
-            elif architecture == 'phi':
-                model_info_dict.update({
-                    'phi.context_length': context_length,
-                    'phi.embedding_length': enhanced_info.get('embedding_length', 4096)
-                })
-            
+            if architecture == "llama":
+                model_info_dict.update(
+                    {
+                        "llama.context_length": context_length,
+                        "llama.embedding_length": enhanced_info.get("embedding_length", 4096),
+                        "llama.block_count": 32 if "8b" in model_name.lower() else 80,
+                        "llama.attention.head_count": 32 if "8b" in model_name.lower() else 64,
+                        "llama.attention.head_count_kv": 8 if "8b" in model_name.lower() else 8,
+                        "llama.attention.layer_norm_rms_epsilon": 1e-05,
+                        "llama.feed_forward_length": 14336 if "8b" in model_name.lower() else 28672,
+                        "llama.rope.dimension_count": 128,
+                        "llama.rope.freq_base": 500000,
+                    }
+                )
+            elif architecture == "phi":
+                model_info_dict.update(
+                    {
+                        "phi.context_length": context_length,
+                        "phi.embedding_length": enhanced_info.get("embedding_length", 4096),
+                    }
+                )
+
             # Return model capabilities in exact Ollama format
-            return jsonify({
-                'license': enhanced_info.get('license_info', 'Apache 2.0'),
-                'modelfile': f'# Modelfile generated by "ollama show"\n# To build a new Modelfile based on this, replace FROM with:\n# FROM {model_name}\n\nFROM {model_info.path}\nTEMPLATE """{enhanced_info.get("template", "{{ if .System }}{{ .System }}{{ end }}{{ if .Prompt }}{{ .Prompt }}{{ end }}")}\n"""\n' + '\n'.join([f'PARAMETER {line}' for line in parameters_section.split('\n') if line.strip()]),
-                'parameters': '\n'.join([f'{line.split()[0]:<30} "{line.split(maxsplit=1)[1].strip(chr(34))}"' if 'stop' in line else f'{line.split()[0]:<30} {line.split(maxsplit=1)[1]}' for line in parameters_section.split('\n') if line.strip()]),
-                'template': enhanced_info.get('template', '{{- if or .System .Tools }}<|start_header_id|>system<|end_header_id|>\n{{- if .System }}\n\n{{ .System }}\n{{- end }}<|eot_id|>\n{{- end }}\n{{- range $i, $_ := .Messages }}\n{{- if eq .Role "user" }}<|start_header_id|>user<|end_header_id|>\n\n{{ .Content }}<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n{{- else if eq .Role "assistant" }}\n\n{{ .Content }}<|eot_id|>\n{{- end }}\n{{- end }}'),
-                'details': {
-                    'parent_model': '',
-                    'format': 'gguf',
-                    'family': architecture,
-                    'families': [architecture],
-                    'parameter_size': enhanced_info['parameter_size'],
-                    'quantization_level': enhanced_info['quantization']
-                },
-                'model_info': model_info_dict
-            })
+            return jsonify(
+                {
+                    "license": enhanced_info.get("license_info", "Apache 2.0"),
+                    "modelfile": f'# Modelfile generated by "ollama show"\n# To build a new Modelfile based on this, replace FROM with:\n# FROM {model_name}\n\nFROM {model_info.path}\nTEMPLATE """{enhanced_info.get("template", "{{ if .System }}{{ .System }}{{ end }}{{ if .Prompt }}{{ .Prompt }}{{ end }}")}\n"""\n'
+                    + "\n".join(
+                        [
+                            f"PARAMETER {line}"
+                            for line in parameters_section.split("\n")
+                            if line.strip()
+                        ]
+                    ),
+                    "parameters": "\n".join(
+                        [
+                            (
+                                f'{line.split()[0]:<30} "{line.split(maxsplit=1)[1].strip(chr(34))}"'
+                                if "stop" in line
+                                else f"{line.split()[0]:<30} {line.split(maxsplit=1)[1]}"
+                            )
+                            for line in parameters_section.split("\n")
+                            if line.strip()
+                        ]
+                    ),
+                    "template": enhanced_info.get(
+                        "template",
+                        '{{- if or .System .Tools }}<|start_header_id|>system<|end_header_id|>\n{{- if .System }}\n\n{{ .System }}\n{{- end }}<|eot_id|>\n{{- end }}\n{{- range $i, $_ := .Messages }}\n{{- if eq .Role "user" }}<|start_header_id|>user<|end_header_id|>\n\n{{ .Content }}<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n{{- else if eq .Role "assistant" }}\n\n{{ .Content }}<|eot_id|>\n{{- end }}\n{{- end }}',
+                    ),
+                    "details": {
+                        "parent_model": "",
+                        "format": "gguf",
+                        "family": architecture,
+                        "families": [architecture],
+                        "parameter_size": enhanced_info["parameter_size"],
+                        "quantization_level": enhanced_info["quantization"],
+                    },
+                    "model_info": model_info_dict,
+                }
+            )
         except Exception as e:
             logger.exception("Error in Ollama show")
-            return jsonify({'error': str(e)}), 500
+            return jsonify({"error": str(e)}), 500
 
-    @api_bp.route('/info', methods=['GET'])  # HuggingFace TGI info
+    @api_bp.route("/info", methods=["GET"])  # HuggingFace TGI info
     def huggingface_info():
         """HuggingFace TGI info endpoint."""
         try:
             # Get first available model as default
             model_mapping = model_manager.build_model_mapping()
             if not model_mapping:
-                return jsonify({'error': 'No models available'}), 404
-            
+                return jsonify({"error": "No models available"}), 404
+
             default_model_id = list(model_mapping.keys())[0]
             model_info = model_manager.get_model_info(default_model_id)
-            
+
             if not model_info:
-                return jsonify({'error': 'Model info not available'}), 500
-            
-            return jsonify({
-                'model_id': model_info.id,
-                'model_sha': model_info.path.split('sha256-')[-1] if 'sha256-' in model_info.path else 'unknown',
-                'model_dtype': model_info.quantization,
-                'model_device_type': 'cuda',
-                'model_pipeline_tag': 'text-generation',
-                'max_concurrent_requests': 128,
-                'max_best_of': 1,
-                'max_stop_sequences': 4,
-                'max_input_length': model_info.context_size,
-                'max_total_tokens': model_info.context_size,
-                'version': '1.0.0'
-            })
+                return jsonify({"error": "Model info not available"}), 500
+
+            return jsonify(
+                {
+                    "model_id": model_info.id,
+                    "model_sha": (
+                        model_info.path.split("sha256-")[-1]
+                        if "sha256-" in model_info.path
+                        else "unknown"
+                    ),
+                    "model_dtype": model_info.quantization,
+                    "model_device_type": "cuda",
+                    "model_pipeline_tag": "text-generation",
+                    "max_concurrent_requests": 128,
+                    "max_best_of": 1,
+                    "max_stop_sequences": 4,
+                    "max_input_length": model_info.context_size,
+                    "max_total_tokens": model_info.context_size,
+                    "version": "1.0.0",
+                }
+            )
         except Exception as e:
             logger.exception("Error in HuggingFace info")
-            return jsonify({'error': str(e)}), 500
+            return jsonify({"error": str(e)}), 500
 
     # ============================================================================
     # Monitoring and Management Endpoints
     # ============================================================================
-    
-    @api_bp.route('/api/progress/<request_id>', methods=['GET'])
+
+    @api_bp.route("/api/progress/<request_id>", methods=["GET"])
     def get_progress(request_id: str):
         """Get progress for a specific request."""
         req_status = request_tracker.get_request(request_id)
         if not req_status:
-            return jsonify({'error': 'Request not found'}), 404
-        
-        return jsonify({
-            'request_id': req_status.request_id,
-            'status': req_status.status,
-            'progress': req_status.progress,
-            'total': req_status.total,
-            'start_time': req_status.start_time,
-            'last_update': req_status.last_update,
-            'model': req_status.model,
-            'error': req_status.error
-        })
+            return jsonify({"error": "Request not found"}), 404
 
-    @api_bp.route('/api/dismiss/<request_id>', methods=['POST'])
+        return jsonify(
+            {
+                "request_id": req_status.request_id,
+                "status": req_status.status,
+                "progress": req_status.progress,
+                "total": req_status.total,
+                "start_time": req_status.start_time,
+                "last_update": req_status.last_update,
+                "model": req_status.model,
+                "error": req_status.error,
+            }
+        )
+
+    @api_bp.route("/api/dismiss/<request_id>", methods=["POST"])
     def dismiss_request(request_id: str):
         """Dismiss/remove a specific request from tracking."""
         request_tracker.remove_request(request_id)
-        return jsonify({'message': 'Request dismissed'})
+        return jsonify({"message": "Request dismissed"})
 
-    @api_bp.route('/api/dismiss/completed', methods=['POST'])
+    @api_bp.route("/api/dismiss/completed", methods=["POST"])
     def dismiss_completed():
         """Dismiss all completed requests."""
         removed_count = request_tracker.remove_completed(0)  # Remove immediately
-        return jsonify({'message': f'Dismissed {removed_count} completed requests'})
+        return jsonify({"message": f"Dismissed {removed_count} completed requests"})
 
-    @api_bp.route('/health', methods=['GET'])
+    @api_bp.route("/health", methods=["GET"])
     def health_check():
         """Health check endpoint."""
         try:
             # Check if executor is available
-            executor_status = 'healthy' if llama_executor else 'unhealthy'
-            
+            executor_status = "healthy" if llama_executor else "unhealthy"
+
             # Check model availability
             model_mapping = model_manager.build_model_mapping()
             model_count = len(model_mapping)
-            
+
             # Check active requests
             active_requests = len(request_tracker.get_all_requests())
-            
-            status = 'healthy' if executor_status == 'healthy' and model_count > 0 else 'degraded'
-            
-            return jsonify({
-                'status': status,
-                'timestamp': datetime.now().isoformat(),
-                'components': {
-                    'executor': executor_status,
-                    'models': f'{model_count} available',
-                    'active_requests': active_requests
+
+            status = "healthy" if executor_status == "healthy" and model_count > 0 else "degraded"
+
+            return jsonify(
+                {
+                    "status": status,
+                    "timestamp": datetime.now().isoformat(),
+                    "components": {
+                        "executor": executor_status,
+                        "models": f"{model_count} available",
+                        "active_requests": active_requests,
+                    },
                 }
-            })
+            )
         except Exception as e:
             logger.exception("Error in health check")
-            return jsonify({
-                'status': 'unhealthy',
-                'timestamp': datetime.now().isoformat(),
-                'error': str(e)
-            }), 500
+            return (
+                jsonify(
+                    {
+                        "status": "unhealthy",
+                        "timestamp": datetime.now().isoformat(),
+                        "error": str(e),
+                    }
+                ),
+                500,
+            )
 
     # ============================================================================
     # Dashboard Pages (HTML)
     # ============================================================================
-    
-    @api_bp.route('/dashboard', methods=['GET'])
+
+    @api_bp.route("/dashboard", methods=["GET"])
     def dashboard():
         """Enhanced web dashboard with real-time GPU monitoring."""
         # Start GPU monitoring if not already running
         gpu_monitor.start_monitoring()
-        return render_template('dashboard.html')
+        return render_template("dashboard.html")
 
-    @api_bp.route('/api/metrics/dashboard', methods=['GET'])
+    @api_bp.route("/api/metrics/dashboard", methods=["GET"])
     def dashboard_metrics():
         """Enhanced dashboard metrics API endpoint."""
         try:
             # Get service status
             status_response = health_check()
             status_data = status_response.get_json()
-            
+
             # Get recent requests (active + last 10 completed)
             active_requests = []
             for req_status in request_tracker.get_recent_requests():
-                active_requests.append({
-                    'request_id': req_status.request_id,
-                    'status': req_status.status,
-                    'model': req_status.model,
-                    'progress': req_status.progress,
-                    'total': req_status.total,
-                    'start_time': req_status.start_time,
-                    'duration': req_status.duration,
-                    'total_tokens_per_second': req_status.total_tokens_per_second,
-                    'generated_tokens_per_second': req_status.generated_tokens_per_second,
-                    'actual_tokens': req_status.actual_tokens,  # This is generated tokens
-                    'prompt_tokens': req_status.prompt_tokens,
-                    'api_format': getattr(req_status, 'api_format', 'unknown')
-                })
-            
+                active_requests.append(
+                    {
+                        "request_id": req_status.request_id,
+                        "status": req_status.status,
+                        "model": req_status.model,
+                        "progress": req_status.progress,
+                        "total": req_status.total,
+                        "start_time": req_status.start_time,
+                        "duration": req_status.duration,
+                        "total_tokens_per_second": req_status.total_tokens_per_second,
+                        "generated_tokens_per_second": req_status.generated_tokens_per_second,
+                        "actual_tokens": req_status.actual_tokens,  # This is generated tokens
+                        "prompt_tokens": req_status.prompt_tokens,
+                        "api_format": getattr(req_status, "api_format", "unknown"),
+                    }
+                )
+
             # Get models with enhanced context detection
-            models_data = handler.handle_models_list(model_manager, 'ollama')
-            
+            models_data = handler.handle_models_list(model_manager, "ollama")
+
             # Enhance models with accurate context sizes from model inspector
             enhanced_models = []
-            if 'models' in models_data:
-                for model in models_data['models']:
+            if "models" in models_data:
+                for model in models_data["models"]:
                     try:
                         # Use the same logic as the show endpoint to get enhanced model info
                         model_mapping = model_manager.build_model_mapping()
                         base_model_info = None
-                        
+
                         # Try exact match first
-                        if model['name'] in model_mapping:
-                            base_model_info = model_manager.get_model_info(model['name'])
-                        
+                        if model["name"] in model_mapping:
+                            base_model_info = model_manager.get_model_info(model["name"])
+
                         if base_model_info:
                             # Get enhanced model info using the inspector (same as show endpoint)
-                            enhanced_info = model_inspector.get_enhanced_model_info(model['name'], base_model_info)
-                            
+                            enhanced_info = model_inspector.get_enhanced_model_info(
+                                model["name"], base_model_info
+                            )
+
                             # Build model_info section with accurate context length
-                            architecture = enhanced_info.get('architecture', 'unknown')
-                            context_length = enhanced_info.get('context_size', 4096)
-                            
+                            architecture = enhanced_info.get("architecture", "unknown")
+                            context_length = enhanced_info.get("context_size", 4096)
+
                             # Generate model_info that matches real Ollama format
                             model_info_section = {
-                                'general.architecture': architecture,
-                                'general.context_length': context_length,
-                                f'{architecture}.context_length': context_length,
-                                f'{architecture}.embedding_length': enhanced_info.get('embedding_length', context_length)
+                                "general.architecture": architecture,
+                                "general.context_length": context_length,
+                                f"{architecture}.context_length": context_length,
+                                f"{architecture}.embedding_length": enhanced_info.get(
+                                    "embedding_length", context_length
+                                ),
                             }
-                            
+
                             # Update the model with enhanced info
-                            model.update({
-                                'context_size': context_length,
-                                'model_info': model_info_section
-                            })
-                            
-                            logger.info(f"Enhanced model {model['name']}: context_size={context_length}")
+                            model.update(
+                                {"context_size": context_length, "model_info": model_info_section}
+                            )
+
+                            logger.info(
+                                f"Enhanced model {model['name']}: context_size={context_length}"
+                            )
                         else:
                             logger.warning(f"Could not find model info for {model['name']}")
                             # Set default values
-                            model.update({
-                                'context_size': 4096,
-                                'model_info': {'general.context_length': 4096}
-                            })
+                            model.update(
+                                {
+                                    "context_size": 4096,
+                                    "model_info": {"general.context_length": 4096},
+                                }
+                            )
                     except Exception as e:
                         logger.exception(f"Error enhancing model {model['name']}: {e}")
                         # Set default values
-                        model.update({
-                            'context_size': 4096,
-                            'model_info': {'general.context_length': 4096}
-                        })
+                        model.update(
+                            {"context_size": 4096, "model_info": {"general.context_length": 4096}}
+                        )
                     enhanced_models.append(model)
-                models_data['models'] = enhanced_models
-            
+                models_data["models"] = enhanced_models
+
             # Get GPU metrics
             gpu_metrics = gpu_monitor.to_dict()
-            
-            return jsonify({
-                'status': status_data,
-                'requests': active_requests,
-                'models': models_data.get('models', []),
-                'gpu_metrics': gpu_metrics,
-                'timestamp': datetime.now().isoformat()
-            })
+
+            return jsonify(
+                {
+                    "status": status_data,
+                    "requests": active_requests,
+                    "models": models_data.get("models", []),
+                    "gpu_metrics": gpu_metrics,
+                    "timestamp": datetime.now().isoformat(),
+                }
+            )
         except Exception as e:
             logger.exception("Error in dashboard data")
-            return jsonify({'error': str(e)}), 500
+            return jsonify({"error": str(e)}), 500
 
-    @api_bp.route('/dashboard/gpu', methods=['GET'])
+    @api_bp.route("/dashboard/gpu", methods=["GET"])
     def gpu_monitor_page():
         """Dedicated GPU monitoring page."""
         gpu_monitor.start_monitoring()
-        return render_template('gpu_monitor.html')
-    
-    @api_bp.route('/dashboard/models', methods=['GET'])
+        return render_template("gpu_monitor.html")
+
+    @api_bp.route("/dashboard/models", methods=["GET"])
     def model_analytics_page():
         """Model performance analytics page."""
-        return render_template('model_analytics.html')
-    
-    @api_bp.route('/dashboard/apis', methods=['GET'])
+        return render_template("model_analytics.html")
+
+    @api_bp.route("/dashboard/apis", methods=["GET"])
     def api_health_page():
         """API endpoint health monitoring page."""
-        return render_template('api_health.html')
-    
-    @api_bp.route('/dashboard/config', methods=['GET'])
+        return render_template("api_health.html")
+
+    @api_bp.route("/dashboard/config", methods=["GET"])
     def config_panel_page():
         """Dynamic configuration panel."""
-        return render_template('config_panel.html')
-    
+        return render_template("config_panel.html")
+
     # ============================================================================
     # Metrics API Endpoints (JSON)
     # ============================================================================
-    
-    @api_bp.route('/api/metrics/gpu', methods=['GET'])
+
+    @api_bp.route("/api/metrics/gpu", methods=["GET"])
     def gpu_metrics_api():
         """Real-time GPU metrics API endpoint."""
         try:
             # Ensure GPU monitoring is started
             gpu_monitor.start_monitoring()
-            
+
             # Get metrics with fallback
             metrics = gpu_monitor.to_dict()
             if metrics:
                 return jsonify(metrics)
-            
+
             # Try to get a basic GPU reading first
             try:
                 basic_metrics = gpu_monitor.get_current_metrics()
                 if basic_metrics:
                     from dataclasses import asdict
+
                     return jsonify(asdict(basic_metrics))
             except Exception as e:
                 logger.warning(f"Failed to get GPU metrics: {e}")
-            
+
             # Return empty but valid structure
-            return jsonify({
-                'timestamp': datetime.now().isoformat(),
-                'gpus': [],
-                'total_memory_used': 0,
-                'total_memory_available': 0,
-                'driver_version': 'unknown',
-                'cuda_version': 'unknown',
-                'error': 'GPU data unavailable - may need NVIDIA drivers or GPU access'
-            })
-            
+            return jsonify(
+                {
+                    "timestamp": datetime.now().isoformat(),
+                    "gpus": [],
+                    "total_memory_used": 0,
+                    "total_memory_available": 0,
+                    "driver_version": "unknown",
+                    "cuda_version": "unknown",
+                    "error": "GPU data unavailable - may need NVIDIA drivers or GPU access",
+                }
+            )
+
         except Exception as e:
             logger.exception("Error getting GPU metrics")
-            return jsonify({
-                'error': str(e),
-                'timestamp': datetime.now().isoformat(),
-                'gpus': [],
-                'total_memory_used': 0,
-                'total_memory_available': 0,
-                'driver_version': 'unknown',
-                'cuda_version': 'unknown'
-            }), 200  # Return 200 instead of 500 to avoid dashboard errors
-    
-    @api_bp.route('/api/metrics/apis', methods=['GET'])
+            return (
+                jsonify(
+                    {
+                        "error": str(e),
+                        "timestamp": datetime.now().isoformat(),
+                        "gpus": [],
+                        "total_memory_used": 0,
+                        "total_memory_available": 0,
+                        "driver_version": "unknown",
+                        "cuda_version": "unknown",
+                    }
+                ),
+                200,
+            )  # Return 200 instead of 500 to avoid dashboard errors
+
+    @api_bp.route("/api/metrics/apis", methods=["GET"])
     def api_metrics_endpoint():
         """Real-time API endpoint metrics."""
         try:
             metrics_data = api_metrics.get_endpoint_data_for_charts()
-            return jsonify({
-                'endpoints': metrics_data,
-                'timestamp': datetime.now().isoformat(),
-                'overallHealth': 'healthy' if all(e['status'] == 'healthy' for e in metrics_data) else 'degraded'
-            })
+            return jsonify(
+                {
+                    "endpoints": metrics_data,
+                    "timestamp": datetime.now().isoformat(),
+                    "overallHealth": (
+                        "healthy"
+                        if all(e["status"] == "healthy" for e in metrics_data)
+                        else "degraded"
+                    ),
+                }
+            )
         except Exception as e:
             logger.exception("Error getting API metrics")
-            return jsonify({'error': str(e)}), 500
-    
-    @api_bp.route('/api/dashboard/configure', methods=['POST'])
+            return jsonify({"error": str(e)}), 500
+
+    @api_bp.route("/api/dashboard/configure", methods=["POST"])
     def configure_system():
         """Dynamic system configuration endpoint."""
         try:
             config_data = request.get_json()
             if not config_data:
-                return jsonify({'error': 'No configuration data provided'}), 400
-            
+                return jsonify({"error": "No configuration data provided"}), 400
+
             # TODO: Implement configuration application
             # This would update tensor splits, context sizes, etc.
-            
+
             logger.info(f"Configuration update requested: {config_data}")
-            
-            return jsonify({
-                'status': 'success',
-                'message': 'Configuration applied successfully',
-                'applied_config': config_data
-            })
+
+            return jsonify(
+                {
+                    "status": "success",
+                    "message": "Configuration applied successfully",
+                    "applied_config": config_data,
+                }
+            )
         except Exception as e:
             logger.exception("Error applying configuration")
-            return jsonify({'error': str(e)}), 500
+            return jsonify({"error": str(e)}), 500
 
-    @api_bp.route('/api/dashboard/weight-distribution', methods=['GET'])
+    @api_bp.route("/api/dashboard/weight-distribution", methods=["GET"])
     def get_weight_distribution():
         """Get current weight distribution configuration."""
         try:
             gpu_metrics = gpu_monitor.to_dict()
             if not gpu_metrics:
-                return jsonify({'error': 'GPU metrics not available'}), 503
-            
+                return jsonify({"error": "GPU metrics not available"}), 503
+
             # Create or get current configuration
             if not weight_manager.current_config:
                 config = weight_manager.create_config_from_gpu_data(gpu_metrics)
             else:
                 config = weight_manager.current_config
-            
+
             return jsonify(weight_manager.get_config_summary(config))
         except Exception as e:
             logger.exception("Error getting weight distribution")
-            return jsonify({'error': str(e)}), 500
-    
-    @api_bp.route('/api/dashboard/weight-distribution', methods=['POST'])
+            return jsonify({"error": str(e)}), 500
+
+    @api_bp.route("/api/dashboard/weight-distribution", methods=["POST"])
     def update_weight_distribution():
         """Update weight distribution configuration."""
         try:
             data = request.get_json()
             if not data:
-                return jsonify({'error': 'No configuration data provided'}), 400
-            
+                return jsonify({"error": "No configuration data provided"}), 400
+
             gpu_metrics = gpu_monitor.to_dict()
             if not gpu_metrics:
-                return jsonify({'error': 'GPU metrics not available'}), 503
-            
-            if 'preset' in data:
+                return jsonify({"error": "GPU metrics not available"}), 503
+
+            if "preset" in data:
                 # Apply preset configuration
-                preset_name = data['preset']
-                model_name = data.get('model_name')
+                preset_name = data["preset"]
+                model_name = data.get("model_name")
                 config = weight_manager.apply_preset(preset_name, gpu_metrics, model_name)
-                
-                return jsonify({
-                    'status': 'success',
-                    'message': f'Applied {preset_name} preset',
-                    'config': weight_manager.get_config_summary(config)
-                })
-            
-            elif 'gpu_weights' in data:
+
+                return jsonify(
+                    {
+                        "status": "success",
+                        "message": f"Applied {preset_name} preset",
+                        "config": weight_manager.get_config_summary(config),
+                    }
+                )
+
+            elif "gpu_weights" in data:
                 # Apply custom weights
-                gpu_weights = data['gpu_weights']  # List of {gpu_id: int, weight: float}
-                
+                gpu_weights = data["gpu_weights"]  # List of {gpu_id: int, weight: float}
+
                 # Ensure we have a current config
                 if not weight_manager.current_config:
                     weight_manager.create_config_from_gpu_data(gpu_metrics)
-                
+
                 # Update individual GPU weights
                 for gpu_weight in gpu_weights:
-                    gpu_id = gpu_weight.get('gpu_id')
-                    weight = gpu_weight.get('weight', 0.0)
+                    gpu_id = gpu_weight.get("gpu_id")
+                    weight = gpu_weight.get("weight", 0.0)
                     if gpu_id is not None:
                         weight_manager.update_weight(gpu_id, weight)
-                
-                return jsonify({
-                    'status': 'success',
-                    'message': 'Updated custom weight distribution',
-                    'config': weight_manager.get_config_summary()
-                })
-            
-            elif 'model_config' in data:
+
+                return jsonify(
+                    {
+                        "status": "success",
+                        "message": "Updated custom weight distribution",
+                        "config": weight_manager.get_config_summary(),
+                    }
+                )
+
+            elif "model_config" in data:
                 # Update model-specific configuration
-                model_config = data['model_config']
+                model_config = data["model_config"]
                 if weight_manager.current_config:
-                    if 'context_size' in model_config:
-                        weight_manager.current_config.context_size = model_config['context_size']
-                    if 'batch_size' in model_config:
-                        weight_manager.current_config.batch_size = model_config['batch_size']
-                    if 'gpu_layers' in model_config:
-                        weight_manager.current_config.gpu_layers = model_config['gpu_layers']
-                    if 'model_name' in model_config:
-                        weight_manager.current_config.model_name = model_config['model_name']
-                    
+                    if "context_size" in model_config:
+                        weight_manager.current_config.context_size = model_config["context_size"]
+                    if "batch_size" in model_config:
+                        weight_manager.current_config.batch_size = model_config["batch_size"]
+                    if "gpu_layers" in model_config:
+                        weight_manager.current_config.gpu_layers = model_config["gpu_layers"]
+                    if "model_name" in model_config:
+                        weight_manager.current_config.model_name = model_config["model_name"]
+
                     # Revalidate configuration
                     weight_manager.validate_config(weight_manager.current_config)
-                
-                return jsonify({
-                    'status': 'success',
-                    'message': 'Updated model configuration',
-                    'config': weight_manager.get_config_summary()
-                })
-            
+
+                return jsonify(
+                    {
+                        "status": "success",
+                        "message": "Updated model configuration",
+                        "config": weight_manager.get_config_summary(),
+                    }
+                )
+
             else:
-                return jsonify({'error': 'Invalid configuration data'}), 400
-                
+                return jsonify({"error": "Invalid configuration data"}), 400
+
         except Exception as e:
             logger.exception("Error updating weight distribution")
-            return jsonify({'error': str(e)}), 500
-    
-    @api_bp.route('/api/dashboard/weight-distribution/presets', methods=['GET'])
+            return jsonify({"error": str(e)}), 500
+
+    @api_bp.route("/api/dashboard/weight-distribution/presets", methods=["GET"])
     def get_weight_presets():
         """Get available weight distribution presets."""
         try:
-            return jsonify({
-                'presets': weight_manager.preset_configs
-            })
+            return jsonify({"presets": weight_manager.preset_configs})
         except Exception as e:
             logger.exception("Error getting weight presets")
-            return jsonify({'error': str(e)}), 500
-    
-    @api_bp.route('/api/dashboard/weight-distribution/validate', methods=['POST'])
+            return jsonify({"error": str(e)}), 500
+
+    @api_bp.route("/api/dashboard/weight-distribution/validate", methods=["POST"])
     def validate_weight_distribution():
         """Validate a weight distribution configuration."""
         try:
             data = request.get_json()
             if not data:
-                return jsonify({'error': 'No configuration data provided'}), 400
-            
+                return jsonify({"error": "No configuration data provided"}), 400
+
             gpu_metrics = gpu_monitor.to_dict()
             if not gpu_metrics:
-                return jsonify({'error': 'GPU metrics not available'}), 503
-            
+                return jsonify({"error": "GPU metrics not available"}), 503
+
             # Create temporary configuration for validation
             config = weight_manager.create_config_from_gpu_data(gpu_metrics)
-            
+
             # Apply provided weights
-            if 'gpu_weights' in data:
-                gpu_weights = data['gpu_weights']
+            if "gpu_weights" in data:
+                gpu_weights = data["gpu_weights"]
                 for gpu_weight in gpu_weights:
-                    gpu_id = gpu_weight.get('gpu_id')
-                    weight = gpu_weight.get('weight', 0.0)
+                    gpu_id = gpu_weight.get("gpu_id")
+                    weight = gpu_weight.get("weight", 0.0)
                     for gpu_config in config.gpu_configs:
                         if gpu_config.gpu_id == gpu_id:
                             gpu_config.weight_percentage = weight
                             break
-            
+
             # Update model configuration if provided
-            if 'model_config' in data:
-                model_config = data['model_config']
-                config.context_size = model_config.get('context_size', config.context_size)
-                config.batch_size = model_config.get('batch_size', config.batch_size)
-                config.gpu_layers = model_config.get('gpu_layers', config.gpu_layers)
-                config.model_name = model_config.get('model_name', config.model_name)
-            
+            if "model_config" in data:
+                model_config = data["model_config"]
+                config.context_size = model_config.get("context_size", config.context_size)
+                config.batch_size = model_config.get("batch_size", config.batch_size)
+                config.gpu_layers = model_config.get("gpu_layers", config.gpu_layers)
+                config.model_name = model_config.get("model_name", config.model_name)
+
             # Validate configuration
             weight_manager.validate_config(config)
-            
-            return jsonify({
-                'is_valid': config.is_valid,
-                'validation_errors': config.validation_errors,
-                'tensor_split': weight_manager.get_tensor_split_string(config),
-                'config_summary': weight_manager.get_config_summary(config)
-            })
-            
+
+            return jsonify(
+                {
+                    "is_valid": config.is_valid,
+                    "validation_errors": config.validation_errors,
+                    "tensor_split": weight_manager.get_tensor_split_string(config),
+                    "config_summary": weight_manager.get_config_summary(config),
+                }
+            )
+
         except Exception as e:
             logger.exception("Error validating weight distribution")
-            return jsonify({'error': str(e)}), 500
-    
-    @api_bp.route('/api/metrics/optimization', methods=['GET'])
+            return jsonify({"error": str(e)}), 500
+
+    @api_bp.route("/api/metrics/optimization", methods=["GET"])
     def hardware_optimization_insights():
         """Hardware optimization insights and recommendations."""
         try:
             # Initialize hardware optimizer with current components
             hardware_optimizer.gpu_monitor = gpu_monitor
             hardware_optimizer.model_manager = model_manager
-            
+
             # Get current configuration from request parameters or defaults
             current_config = {
-                'tensor_split': request.args.get('tensor_split', config.default_tensor_split),
-                'gpu_layers': int(request.args.get('gpu_layers', 999)),
-                'threads': int(request.args.get('threads', 32)),
-                'batch_size': int(request.args.get('batch_size', 512)),
-                'context_size': int(request.args.get('context_size', 131072))
+                "tensor_split": request.args.get("tensor_split", config.default_tensor_split),
+                "gpu_layers": int(request.args.get("gpu_layers", 999)),
+                "threads": int(request.args.get("threads", 32)),
+                "batch_size": int(request.args.get("batch_size", 512)),
+                "context_size": int(request.args.get("context_size", 131072)),
             }
-            
+
             # Perform comprehensive analysis
             analysis = hardware_optimizer.analyze_system(current_config)
-            
+
             # Convert dataclass to dict for JSON serialization
             from dataclasses import asdict
+
             analysis_dict = asdict(analysis)
-            
+
             return jsonify(analysis_dict)
-            
+
         except Exception as e:
             logger.exception("Error generating optimization insights")
-            return jsonify({'error': str(e)}), 500
-    
-    @api_bp.route('/dashboard/optimization', methods=['GET'])
+            return jsonify({"error": str(e)}), 500
+
+    @api_bp.route("/dashboard/optimization", methods=["GET"])
     def optimization_insights_page():
         """Hardware optimization insights dashboard page."""
-        return render_template('optimization_insights.html')
+        return render_template("optimization_insights.html")
 
-    @api_bp.route('/', methods=['GET'])
+    @api_bp.route("/", methods=["GET"])
     def root():
         """Root endpoint - redirect to dashboard."""
-        return jsonify({
-            'service': 'LLM Inference Service',
-            'status': 'running',
-            'endpoints': {
-                'dashboard': '/dashboard',
-                'health': '/health',
-                'openai_chat': '/api/chat/completions',
-                'ollama_generate': '/api/generate',
-                'models': '/api/models'
+        return jsonify(
+            {
+                "service": "LLM Inference Service",
+                "status": "running",
+                "endpoints": {
+                    "dashboard": "/dashboard",
+                    "health": "/health",
+                    "openai_chat": "/api/chat/completions",
+                    "ollama_generate": "/api/generate",
+                    "models": "/api/models",
+                },
             }
-        })
-    
+        )
 
     return api_bp

@@ -14,7 +14,7 @@
 
 """API layer for the Ollama-compatible server."""
 
-from .routes import create_routes
 from .handlers import RequestHandler
+from .routes import create_routes
 
-__all__ = ['create_routes', 'RequestHandler']
+__all__ = ["create_routes", "RequestHandler"]

@@ -13,47 +13,48 @@
 # limitations under the License.
 
 """Main entry point for the Ollama-compatible LLM inference server."""
+
 import logging
-import sys
 import os
+import sys
 from typing import Optional
 
 from flask import Flask
 
 __version__ = "1.0.0"
 
-from .config import parse_arguments
-from .utils.logging import setup_logging
-from .models.manager import ModelManager
-from .core.request_tracker import RequestTracker
-from .core.executor import LLAMAExecutor, find_llama_executable
 from .api.routes import create_routes
+from .config import parse_arguments
+from .core.executor import LLAMAExecutor, find_llama_executable
+from .core.request_tracker import RequestTracker
+from .models.manager import ModelManager
+from .utils.logging import setup_logging
 
 logger = logging.getLogger(__name__)
 
 
 def create_app(config) -> tuple[Flask, ModelManager, RequestTracker, Optional[LLAMAExecutor]]:
     """Create and configure the Flask application."""
-    
+
     # Setup logging
     setup_logging(config.log_dir, config.debug)
-    
+
     # Initialize Flask app with template folder
-    template_dir = os.path.join(os.path.dirname(__file__), 'templates')
+    template_dir = os.path.join(os.path.dirname(__file__), "templates")
     app = Flask(__name__, template_folder=template_dir)
-    app.config['DEBUG'] = config.debug
-    
+    app.config["DEBUG"] = config.debug
+
     # Initialize core components
     logger.info("Initializing core components...")
-    
+
     # Model Manager
     model_manager = ModelManager(config.models_base_dir)
     logger.info(f"Model manager initialized with base dir: {config.models_base_dir}")
-    
+
     # Request Tracker
     request_tracker = RequestTracker(model_manager)
     logger.info("Request tracker initialized")
-    
+
     # LLAMA Executor
     llama_executor = None
     try:
@@ -63,12 +64,12 @@ def create_app(config) -> tuple[Flask, ModelManager, RequestTracker, Optional[LL
     except Exception as e:
         logger.critical(f"Failed to initialize LLAMA executor: {e}", exc_info=True)
         logger.warning("Server will start but model inference will not be available")
-    
+
     # Register routes
     api_blueprint = create_routes(model_manager, request_tracker, llama_executor, config)
     app.register_blueprint(api_blueprint)
     logger.info("API routes registered")
-    
+
     # Test model discovery
     try:
         model_mapping = model_manager.build_model_mapping()
@@ -80,7 +81,7 @@ def create_app(config) -> tuple[Flask, ModelManager, RequestTracker, Optional[LL
             logger.warning("No models found! Check your model directory configuration.")
     except Exception as e:
         logger.error(f"Error during model discovery: {e}")
-    
+
     return app, model_manager, request_tracker, llama_executor
 
 
@@ -91,10 +92,10 @@ def main():
         config = parse_arguments()
         logger.info(f"Starting LLM Inference Service on {config.host}:{config.port}")
         logger.info(f"Configuration: models={config.model_dir}, llama.cpp={config.llama_cpp_dir}")
-        
+
         # Create application
         app, model_manager, request_tracker, llama_executor = create_app(config)
-        
+
         # Start the server
         logger.info("=" * 60)
         logger.info(f"LLM Inference Service v{__version__} Starting")
@@ -103,16 +104,16 @@ def main():
         logger.info(f"📊 Dashboard available at http://{config.host}:{config.port}/dashboard")
         logger.info(f"❤️  Health check at http://{config.host}:{config.port}/health")
         logger.info("=" * 60)
-        
+
         # Run the Flask development server
         app.run(
             host=config.host,
             port=config.port,
             debug=config.debug,
             threaded=True,
-            use_reloader=False  # Disable reloader to prevent issues with threading
+            use_reloader=False,  # Disable reloader to prevent issues with threading
         )
-        
+
     except KeyboardInterrupt:
         logger.info("Server stopped by user")
     except Exception as e:
@@ -120,5 +121,5 @@ def main():
         sys.exit(1)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

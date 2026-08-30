@@ -15,7 +15,6 @@ NC='\033[0m' # No Color
 
 SERVICE_NAME="llm-inference"
 SERVICE_FILE="llm-inference.service"
-INSTALL_DIR="/opt/llm/inference-service"
 
 echo -e "${BLUE}🔧 Installing LLM Inference Service${NC}"
 echo "========================================"
@@ -51,14 +50,14 @@ if ! command -v systemctl &> /dev/null; then
 fi
 
 # Stop service if it's already running
-if systemctl is-active --quiet $SERVICE_NAME 2>/dev/null; then
+if systemctl is-active --quiet "$SERVICE_NAME" 2>/dev/null; then
     echo -e "${YELLOW}⏹️  Stopping existing service...${NC}"
-    sudo systemctl stop $SERVICE_NAME
+    sudo systemctl stop "$SERVICE_NAME"
 fi
 
 # Copy service file to systemd directory
 echo -e "${BLUE}📋 Installing service file...${NC}"
-sudo cp $SERVICE_FILE /etc/systemd/system/
+sudo cp "$SERVICE_FILE" /etc/systemd/system/
 
 # Reload systemd daemon
 echo -e "${BLUE}🔄 Reloading systemd daemon...${NC}"
@@ -66,21 +65,21 @@ sudo systemctl daemon-reload
 
 # Enable the service
 echo -e "${BLUE}🔗 Enabling service...${NC}"
-sudo systemctl enable $SERVICE_NAME
+sudo systemctl enable "$SERVICE_NAME"
 
 # Start the service
 echo -e "${BLUE}🚀 Starting service...${NC}"
-sudo systemctl start $SERVICE_NAME
+sudo systemctl start "$SERVICE_NAME"
 
 # Wait a moment for service to start
 sleep 3
 
 # Check service status
-if systemctl is-active --quiet $SERVICE_NAME; then
+if systemctl is-active --quiet "$SERVICE_NAME"; then
     echo -e "${GREEN}✅ Service installed and started successfully!${NC}"
     echo ""
     echo -e "${BLUE}📊 Service Status:${NC}"
-    sudo systemctl status $SERVICE_NAME --no-pager -l
+    sudo systemctl status "$SERVICE_NAME" --no-pager -l
     echo ""
     echo -e "${BLUE}🌐 Service URLs:${NC}"
     echo "  API Server:   http://localhost:11435"
