@@ -13,13 +13,15 @@
 # limitations under the License.
 
 """Core data structures for the Ollama-compatible server."""
+
 from dataclasses import dataclass
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
 
 
 @dataclass
 class InternalRequest:
     """Unified internal request format"""
+
     request_id: str
     model_name: str
     prompt: str
@@ -36,6 +38,7 @@ class InternalRequest:
 @dataclass
 class RequestStatus:
     """Request status tracking"""
+
     request_id: str
     status: str  # loading, generating, completed, error
     progress: int
@@ -53,36 +56,37 @@ class RequestStatus:
     prompt_eval_duration: Optional[int] = None  # Time spent evaluating prompt (nanoseconds)
     eval_duration: Optional[int] = None  # Time spent generating response (nanoseconds)
     load_duration: Optional[int] = None  # Time spent loading model (nanoseconds)
-    
+
     @property
     def duration(self) -> float:
         """Calculate duration based on completion status"""
-        if self.completion_time and self.status in ['completed', 'error']:
+        if self.completion_time and self.status in ["completed", "error"]:
             return self.completion_time - self.start_time
         # For active requests, calculate live duration from current time
         import time
+
         return time.time() - self.start_time
-    
+
     @property
     def total_tokens_per_second(self) -> float:
         """Calculate total tokens per second using Ollama total_duration"""
         # Don't calculate throughput for error requests or very short durations
-        if self.status == 'error' or self.duration < 0.1:  # Less than 100ms
+        if self.status == "error" or self.duration < 0.1:  # Less than 100ms
             return 0.0
-            
+
         total_duration_seconds = self.duration  # Use overall duration
         total_tokens = self.prompt_tokens + self.actual_tokens  # prompt + generated
         if total_duration_seconds > 0 and total_tokens > 0:
             return total_tokens / total_duration_seconds
         return 0.0
-    
+
     @property
     def generated_tokens_per_second(self) -> float:
         """Calculate generated tokens per second using Ollama eval_duration if available"""
         # Don't calculate throughput for error requests or when no tokens generated
-        if self.status == 'error' or self.actual_tokens == 0:
+        if self.status == "error" or self.actual_tokens == 0:
             return 0.0
-            
+
         if self.eval_duration and self.eval_duration > 0 and self.actual_tokens > 0:
             # Use precise Ollama timing: eval_count / eval_duration * 10^9
             return (self.actual_tokens / self.eval_duration) * 1e9

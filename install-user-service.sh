@@ -14,16 +14,15 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 SERVICE_NAME="llm-inference"
-SERVICE_FILE="llm-inference-user.service"
 
 echo -e "${BLUE}🔧 Installing LLM Inference Service (User Level)${NC}"
 echo "==============================================="
 
 # Create user systemd directory
-mkdir -p ~/.config/systemd/user
+mkdir -p "$HOME/.config/systemd/user"
 
 # Create user service file
-cat > ~/.config/systemd/user/$SERVICE_NAME.service << EOF
+cat > "$HOME/.config/systemd/user/$SERVICE_NAME.service" << EOF
 [Unit]
 Description=LLM Inference Service - Ollama Compatible API
 Documentation=https://github.com/your-org/llm-inference-service
@@ -51,20 +50,20 @@ echo -e "${BLUE}🔄 Reloading systemd user daemon...${NC}"
 systemctl --user daemon-reload
 
 echo -e "${BLUE}🔗 Enabling service...${NC}"
-systemctl --user enable $SERVICE_NAME
+systemctl --user enable "$SERVICE_NAME"
 
 echo -e "${BLUE}🚀 Starting service...${NC}"
-systemctl --user start $SERVICE_NAME
+systemctl --user start "$SERVICE_NAME"
 
 # Wait for service to start
 sleep 3
 
 # Check service status
-if systemctl --user is-active --quiet $SERVICE_NAME; then
+if systemctl --user is-active --quiet "$SERVICE_NAME"; then
     echo -e "${GREEN}✅ Service installed and started successfully!${NC}"
     echo ""
     echo -e "${BLUE}📊 Service Status:${NC}"
-    systemctl --user status $SERVICE_NAME --no-pager -l
+    systemctl --user status "$SERVICE_NAME" --no-pager -l
     echo ""
     echo -e "${BLUE}🌐 Service URLs:${NC}"
     echo "  API Server:   http://localhost:11435"
@@ -80,6 +79,6 @@ if systemctl --user is-active --quiet $SERVICE_NAME; then
 else
     echo -e "${RED}❌ Service failed to start!${NC}"
     echo -e "${YELLOW}💡 Check logs with: journalctl --user -u $SERVICE_NAME -n 50${NC}"
-    systemctl --user status $SERVICE_NAME --no-pager -l || true
+    systemctl --user status "$SERVICE_NAME" --no-pager -l || true
     exit 1
 fi

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-cd /opt/llm/inference-service/docker
+cd /opt/llm/inference-service/docker || exit
 
 # Build the Docker image
 docker-compose build

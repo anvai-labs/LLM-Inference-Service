@@ -27,17 +27,17 @@ mkdir -p images
 echo "📖 Reading diagram configuration..."
 
 # Extract diagram configurations using jq
-DIAGRAMS=$(cat diagram-config.json | jq -r '.diagrams[] | @base64')
+DIAGRAMS=$(jq -r '.diagrams[] | @base64' diagram-config.json)
 
 for diagram in $DIAGRAMS; do
     # Decode diagram data
-    diagram_data=$(echo $diagram | base64 --decode)
+    diagram_data=$(printf '%s' "$diagram" | base64 --decode)
     
     # Extract fields
-    name=$(echo $diagram_data | jq -r '.name')
-    title=$(echo $diagram_data | jq -r '.title')
-    mermaid_content=$(echo $diagram_data | jq -r '.mermaid')
-    output_file=$(echo $diagram_data | jq -r '.outputFile')
+    name=$(printf '%s' "$diagram_data" | jq -r '.name')
+    title=$(printf '%s' "$diagram_data" | jq -r '.title')
+    mermaid_content=$(printf '%s' "$diagram_data" | jq -r '.mermaid')
+    output_file=$(printf '%s' "$diagram_data" | jq -r '.outputFile')
     
     echo "🎯 Generating: $title"
     echo "   📄 Name: $name"
@@ -49,13 +49,11 @@ for diagram in $DIAGRAMS; do
     
     # Generate diagram with scale 4 and puppeteer config
     echo "   🔄 Rendering with scale 4..."
-    mmdc -i "$temp_file" -o "$output_file" \
-         --scale 4 \
-         --puppeteerConfigFile puppeteer-config.json \
-         --theme dark \
-         --backgroundColor transparent
-    
-    if [ $? -eq 0 ]; then
+    if mmdc -i "$temp_file" -o "$output_file" \
+        --scale 4 \
+        --puppeteerConfigFile puppeteer-config.json \
+        --theme dark \
+        --backgroundColor transparent; then
         echo "   ✅ Generated: $output_file"
     else
         echo "   ❌ Failed to generate: $output_file"
@@ -70,7 +68,7 @@ echo "🎉 Diagram generation complete!"
 echo ""
 echo "📊 Generated diagrams:"
 echo "   • Architecture Overview: images/architecture.png"
-echo "   • Dashboard Data Flow: images/dashboard_flow.png" 
+echo "   • Dashboard Data Flow: images/dashboard_flow.png"
 echo "   • API Compatibility: images/api_compatibility.png"
 echo "   • GPU Utilization: images/gpu_utilization.png"
 echo ""

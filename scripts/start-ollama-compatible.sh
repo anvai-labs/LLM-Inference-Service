@@ -1,5 +1,5 @@
 #!/bin/bash
-cd /opt/llm/inference-service
+cd /opt/llm/inference-service || exit
 mkdir -p logs
 
 # Run the API server
